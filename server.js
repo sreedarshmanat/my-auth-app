@@ -1,28 +1,43 @@
 const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
 const app = express();
 
-// This allows the server to read the data sent from your HTML form
+// Allow Express to read form data
 app.use(express.urlencoded({ extended: true }));
 
-// 1. Our "Fake" Database
-const users = [
-    { username: "admin", password: "password123" }
-];
-
-// 2. The Route that handles the Login Form
-app.post('/login', (req, res) => {
-    const { username, password } = req.body;
-
-    // 3. Logic: Check if the user exists
-    const user = users.find(u => u.username === username && u.password === password);
-
-    if (user) {
-        // If match: Send them to a private dashboard
-        res.send(`<h1>Welcome back, ${username}! You are logged in.</h1>`);
-    } else {
-        // If no match: Send an error
-        res.send('<h1>Invalid username or password.</h1> <a href="/">Try again</a>');
-    }
+// Setup SQLite Database
+const db = new sqlite3.Database('./users.db');
+db.serialize(() => {
+    // Creates the table if it doesn't exist. UNIQUE prevents duplicate usernames.
+    db.run("CREATE TABLE IF NOT EXISTS users (username TEXT UNIQUE, password TEXT)");
 });
 
-app.listen(3000, () => console.log('Server running on http://localhost:3000'));
+// Serve the HTML file when someone visits the main page
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
+
+// Route to Register a new user
+app.post('/register', (req, res) => {
+    const { username, password } = req.body;
+    db.run("INSERT INTO users (username, password) VALUES (?, ?)", [username, password], (err) => {
+        if (err) {
+            return res.send("Error: That username is already taken. <a href='/'>Go back</a>");
+        }
+        res.send("Registration successful! <a href='/'>Go back to login</a>");
+    });
+});
+
+// Route to Login
+app.post('/login', (req, res) => {
+    const { username, password } = req.body;
+    db.get("SELECT * FROM users WHERE username = ? AND password = ?", [username, password], (err, row) => {
+        if (row) {
+            res.send(`<h1>Welcome back, ${row.username}! You are logged in.</h1>`);
+        } else {
+            res.send("Invalid username or password. <a href='/'>Try again</a>");
+        }
+    });
+});
+
+app.listen(3000, () => console.log('Server is running on http://localhost:3000'));
